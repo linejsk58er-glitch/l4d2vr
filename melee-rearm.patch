@@ -1,0 +1,69 @@
+diff --git a/L4D2VR/config.txt b/L4D2VR/config.txt
+index ec45bc5..1909f36 100644
+--- a/L4D2VR/config.txt
++++ b/L4D2VR/config.txt
+@@ -494,6 +494,15 @@ MeleeSwingMinTipTravel=0.43
+ MeleeSwingMinHandTravel=0.13
+ // Hits pulse the controller at full strength (haptics_config.txt melee.hit); this also pulses when a swing starts.
+ MeleeSwingStartHaptics=false
++// Swing re-arm gates. After a swing, the blade must slow below MeleeSwingRestSpeed (m/s) for MeleeSwingRestSeconds
++// before the next swing can start, and at least MeleeSwingCooldown seconds must have passed since the last swing
++// started. A swing itself ends when the blade falls below MeleeSwingReleaseSpeed or the hand below
++// MeleeSwingReleaseHandSpeed. Raise MeleeSwingRestSpeed (for example 3.0) to chain flowing, continuous slashes.
++MeleeSwingRestSpeed=1.5
++MeleeSwingRestSeconds=0.02
++MeleeSwingReleaseSpeed=2.5
++MeleeSwingReleaseHandSpeed=1.25
++MeleeSwingCooldown=0.35
+ // Keep the headset fed with frames during loading screens and chapter transitions.
+ LoadingFramePumpEnabled=true
+ LoadingFramePumpStallMs=150
+diff --git a/L4D2VR/vr.h b/L4D2VR/vr.h
+index 1d666db..c590a70 100644
+--- a/L4D2VR/vr.h
++++ b/L4D2VR/vr.h
+@@ -3512,6 +3512,11 @@ public:
+ 	float m_MeleeSwingMinTipTravel = 0.43f;        // MeleeSwingMinTipTravel
+ 	float m_MeleeSwingMinHandleTravel = 0.13f;     // MeleeSwingMinHandTravel
+ 	bool m_MeleeSwingStartHaptics = false;         // MeleeSwingStartHaptics: pulse when a swing starts (hits always pulse)
++	float m_MeleeSwingRestSpeed = 1.5f;            // MeleeSwingRestSpeed: tip speed below which the detector re-arms
++	float m_MeleeSwingRestSeconds = 0.02f;         // MeleeSwingRestSeconds: how long it must stay below that
++	float m_MeleeSwingReleaseSpeed = 2.5f;         // MeleeSwingReleaseSpeed: tip speed below which a swing ends
++	float m_MeleeSwingReleaseHandSpeed = 1.25f;    // MeleeSwingReleaseHandSpeed: hand speed below which a swing ends
++	float m_MeleeSwingCooldown = 0.35f;            // MeleeSwingCooldown: minimum seconds between swing starts
+ 	uint64_t m_MeleeSwingNearMissLogMs = 0u;
+ 	std::atomic<float> m_MeleeLagDeg{ 0.0f };      // current lag of the held melee weapon (main thread)
+ 	// Drawn-weapon lag record for the meleelag self-test. The reference is the
+diff --git a/L4D2VR/vr/vr_melee_motion.inl b/L4D2VR/vr/vr_melee_motion.inl
+index 2884ebf..81a96fb 100644
+--- a/L4D2VR/vr/vr_melee_motion.inl
++++ b/L4D2VR/vr/vr_melee_motion.inl
+@@ -98,6 +98,11 @@ void VR::UpdateMeleeMotion(C_BasePlayer* localPlayer)
+             m_MeleeSwingMinHandleSpeedLong;
+         swingParams.minTipTravel = m_MeleeSwingMinTipTravel;
+         swingParams.minHandleTravel = m_MeleeSwingMinHandleTravel;
++        swingParams.restSpeed = m_MeleeSwingRestSpeed;
++        swingParams.restDuration = m_MeleeSwingRestSeconds;
++        swingParams.releaseSpeed = m_MeleeSwingReleaseSpeed;
++        swingParams.releaseHandleSpeed = m_MeleeSwingReleaseHandSpeed;
++        swingParams.cooldown = m_MeleeSwingCooldown;
+         m_MeleeSwing.SetParams(swingParams);
+     }
+ 
+diff --git a/L4D2VR/vr/vr_viewmodel_config.inl b/L4D2VR/vr/vr_viewmodel_config.inl
+index aa36efd..6faf6e1 100644
+--- a/L4D2VR/vr/vr_viewmodel_config.inl
++++ b/L4D2VR/vr/vr_viewmodel_config.inl
+@@ -3410,6 +3410,12 @@ void VR::ParseConfigFileUnlocked()
+     m_MeleeSwingMinTipTravel = std::clamp(getFloat("MeleeSwingMinTipTravel", 0.43f), 0.0f, 2.0f);
+     m_MeleeSwingMinHandleTravel = std::clamp(getFloat("MeleeSwingMinHandTravel", 0.13f), 0.0f, 1.0f);
+     m_MeleeSwingStartHaptics = getBool("MeleeSwingStartHaptics", false);
++    // Re-arm / release / cooldown gates of the swing detector (defaults = the old built-in values).
++    m_MeleeSwingRestSpeed = std::clamp(getFloat("MeleeSwingRestSpeed", 1.5f), 0.1f, 10.0f);
++    m_MeleeSwingRestSeconds = std::clamp(getFloat("MeleeSwingRestSeconds", 0.02f), 0.0f, 1.0f);
++    m_MeleeSwingReleaseSpeed = std::clamp(getFloat("MeleeSwingReleaseSpeed", 2.5f), 0.1f, 10.0f);
++    m_MeleeSwingReleaseHandSpeed = std::clamp(getFloat("MeleeSwingReleaseHandSpeed", 1.25f), 0.1f, 10.0f);
++    m_MeleeSwingCooldown = std::clamp(getFloat("MeleeSwingCooldown", 0.35f), 0.0f, 2.0f);
+     m_LoadingFramePumpEnabled = getBool("LoadingFramePumpEnabled", true);
+     m_BackgroundAudioEnabled = getBool("BackgroundAudio", true);
+     {
