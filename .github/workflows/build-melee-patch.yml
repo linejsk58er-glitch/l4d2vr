@@ -1,0 +1,59 @@
+name: Build with melee patch
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Windows x86 build (upstream feature/physical-overhaul + melee-rearm.patch)
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - name: Keep line endings as committed
+        shell: pwsh
+        run: git config --global core.autocrlf false
+      - name: Checkout this fork (holds melee-rearm.patch)
+        uses: actions/checkout@v4
+        with:
+          path: fork
+          persist-credentials: false
+      - name: Checkout upstream mod source
+        uses: actions/checkout@v4
+        with:
+          repository: ObeseCatLord/l4d2vr
+          ref: feature/physical-overhaul
+          path: src
+          persist-credentials: false
+      - name: Apply patch
+        shell: pwsh
+        working-directory: src
+        run: |
+          git apply --ignore-whitespace ../fork/melee-rearm.patch
+          if ($LASTEXITCODE -ne 0) { throw 'Patch did not apply' }
+          git diff --stat
+      - name: Build
+        id: candidate
+        shell: pwsh
+        working-directory: src
+        run: |
+          python -B -X utf8 tools/build_candidate.py --skip-tests
+          if ($LASTEXITCODE -ne 0) { throw 'Native candidate build failed' }
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: l4d2vr-melee-patched-x86
+          path: ${{ steps.candidate.outputs.candidate }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-build-logs
+          path: ${{ runner.temp }}/l4d2vr-candidate-*/logs/*.log
+          if-no-files-found: warn
+          retention-days: 7
